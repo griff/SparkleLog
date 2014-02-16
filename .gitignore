@@ -1,0 +1,8 @@
+/vendor/bin
+/vendor/bundle
+/public/*.json
+*.log
+/log-data
+/.bundle/
+/data/GeoLiteCity.dat*
+/db/*.db

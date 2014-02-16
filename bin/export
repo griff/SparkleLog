@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+require File.expand_path('../../config/environment', __FILE__)
+require 'activesupport/lib/active_support/core_ext/file/atomic.rb'
+
+ActiveRecord::Base.logger = Logger.new('log/export.log')
+ActiveSupport::LogSubscriber.colorize_logging = false
+
+require 'sparkle_log'
+
+if ARGV.size < 1
+	$stderr.puts "usage: export [percent|support|all|<version>]"
+	exit 1
+end
+
+data = case ARGV[0]
+	when 'percent'
+		SparkleLog.percent
+	when 'support'
+		SparkleLog.support
+	when 'all'
+		SparkleLog.all
+	else
+		SparkleLog.version(ARGV[0])
+end
+
+if ARGV.size == 2 && ARGV[1] != '-' 
+	File.atomic_write(ARGV[1]) { |f| f.puts data }
+else
+	puts data
+end

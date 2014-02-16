@@ -1,0 +1,119 @@
+#!/usr/bin/env ruby
+require File.expand_path('../../config/environment', __FILE__)
+
+require 'date'
+require 'cgi'
+require 'apachelogregex'
+require 'digest/sha1'
+require 'sinatra/activerecord'
+require './app'
+
+ActiveRecord::Base.logger = Logger.new('log/access_log.log')
+ActiveSupport::LogSubscriber.colorize_logging = false
+
+require 'entry'
+
+format = '%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"'
+parser = ApacheLogRegex.new(format)
+
+url = ENV['APPCAST_URL'] || '/metaz/appcast.xml'
+
+lines = readlines.collect {|line| parser.parse!(line) }
+# {"%r"=>"GET /blog/index.xml HTTP/1.1", "%h"=>"87.18.183.252", ... }
+lines = lines.select {|r| r['%r'] =~ %r[^GET #{url}\?] }
+
+lines.collect! do |r|
+  t = DateTime.strptime(r['%t'], '[%d/%b/%Y:%H:%M:%S %z]').to_time
+  h = r['%h']
+  data = r['%r'] =~ %r[^GET #{url}\?(.*) HTTP] ? CGI.parse($1) : {}
+  data = Hash[data.map{|key, val| [key.underscore, val.join]}]
+
+  #next if h =~ /^192\.168\./
+
+  city = City.by_host(h).first_or_create!
+  h = Digest::SHA1.hexdigest(h)
+  
+  {time:t, host:h, data:data, city:city}
+end
+lines.compact!
+
+lines.each do |line|
+  time = line[:time]
+  host = line[:host]
+  city = line[:city]
+  data = line[:data]
+  
+  r = Entry.where(timestamp:time, host:host).first_or_initialize
+
+  Entry.column_names.each do |c|
+    value = data[c]
+    if value
+      r.send("#{c}=", value)
+    end
+  end
+  r.major_os_version = r.os_version.split('.').first(2).join('.') if r.os_version
+  r.city = city
+  r.save!
+  
+end
+
+def process_line(line)
+  time = line[:time]
+  host = line[:host]
+  user = line[:user]
+  data = line[:data]
+  machine = line[:machine]
+  
+  # Find other records that are valid for #time
+  others = Machine.unscoped { Machine.at(time).where(mid: machine) }
+  
+  # More than one violates integrity
+  if others.count > 1
+    puts time, host
+    others.each {|e| puts e.inspect }
+    raise "Double definition"
+  end
+
+  #if host == 'a6e654cf998fe7184d228b6674df665548c20dae'
+  #  puts host, time, others.map{|t| [t.valid_from, t.valid_to]}.inspect
+  #  puts Request.where("host=?", host).order(:valid_from).map{|t| [t.valid_from, t.valid_to]}.inspect
+  #  puts
+  #end
+
+  if others.count == 1
+    r = others.first
+    if r.valid_from < time
+      #puts "#{r.valid_from} Less than #{time}", [r.valid_from, r.valid_to].inspect if host == 'a6e654cf998fe7184d228b6674df665548c20dae'
+      old_valid_to = r.valid_to
+      r.valid_to = time.to_s(:db)
+      r.save!
+      r = Machine.new(:mid=>machine, :valid_from=>time.to_s(:db), :valid_to=>old_valid_to)
+    end
+  else
+    #where("mid=? AND valid_to=(SELECT min(valid_to) FROM Machines M WHERE M.id=machines.id AND datetime(valid_to)>?)", machine, time).order(:valid_from)
+    top = Machine.unscoped { Machine.min_valid_to(time).where(mid: machine).order(:valid_from) }
+      
+    valid_to = Time.utc(9999)
+    valid_to = top.first.valid_from if top.size == 1
+    #if top.count >= 1 && host == 'a6e654cf998fe7184d228b6674df665548c20dae'
+    #  puts 'Top count', host, time, valid_to, top.map{|t| [t.valid_from, t.valid_to]}.inspect
+    #  puts Request.where("host=?", host).order('valid_from').map{|t| [t.valid_from, t.valid_to]}.inspect
+    #  puts
+    #end
+    r = Machine.new(:mid=>machine, :valid_from=>time.to_s(:db), :valid_to=>valid_to)
+  end
+  
+  Machine.column_names.each do |c|
+    value = data[c]
+    if value
+      r.send("#{c}=", value)
+    end
+  end
+  r.major_os_version = r.os_version.split('.').first(2).join('.')
+  r.user_id = user
+  r.save!
+end
+
+#lines.each do |line|
+#  process_line(line)
+#end

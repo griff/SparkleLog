@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="/xcharts.css" type="text/css" media="screen" title="no title" charset="utf-8">
+  <script src="http://d3js.org/d3.v3.js" charset="utf-8"></script>
+  <script src="/xcharts.js"></script>
+</head>
+<body>
+  <h1>Actual numbers</h1>
+  <h2>Major OS distribution</h2>
+  <figure id="major" style="width: 90%; height: 200px;"></figure>
+  <h2>Mavericks (10.9)</h2>
+  <figure id="d10_9" style="width: 90%; height: 200px;"></figure>
+  <h2>Mountain Lion (10.8)</h2>
+  <figure id="d10_8" style="width: 90%; height: 200px;"></figure>
+  <h2>Lion (10.7)</h2>
+  <figure id="d10_7" style="width: 90%; height: 200px;"></figure>
+  <h2>Snow Leopard (10.6)</h2>
+  <figure id="d10_6" style="width: 90%; height: 200px;"></figure>
+  <h2>Leopard (10.6)</h2>
+  <figure id="d10_5" style="width: 90%; height: 200px;"></figure>
+
+  <h1>Percentage</h1>
+  <h2>Major OS distribution</h2>
+  <figure id="percent" style="width: 90%; height: 200px;"></figure>
+  <h2>Major OS distribution (Zoomed and with a log scale)</h2>
+  <figure id="percent-log" style="width: 90%; height: 200px;"></figure>
+  <h2>Percentage covered by supporting OS</h2>
+  <figure id="support" style="width: 90%; height: 200px;"></figure>
+  <script>
+  function logScale(data, axis, bounds, extents) {
+    return d3.scale.log()
+      .domain([0.2, 40])
+      .range(bounds);
+  };
+  xChart.setScale('log', logScale);
+  function logScale2(data, axis, bounds, extents) {
+    return d3.scale.linear()
+      .domain([60, 100])
+      .range(bounds);
+  };
+  xChart.setScale('log2', logScale2);
+  function processData(json) {
+    var main = []
+    for (var key in json) {
+      var mapped = json[key].map(function(item){
+        return {
+          "x":new Date(item.time),
+          "y":item.count
+        }
+      })
+      main.push({
+        "className": "."+key.replace('.', '-'),
+        "data":mapped
+      });
+    }
+    return main;
+  }
+  function figure(json, element, options) {
+    var main = processData(json);
+    var data = {
+      "xScale":"time",
+      "yScale":"linear",
+      "type":"line",
+      "main": main
+    };
+    for(var key in options) {
+      data[key] = options[key];
+    }
+    window[element] = new xChart('line', data, '#'+element, {
+      "tickFormatX": function(d) {
+        return d.toLocaleDateString();
+      }
+    });
+  }
+  d3.json('/all.json', function(json) {
+    figure(json, 'major');
+  });
+  d3.json('/10.9.json', function(json) {
+    figure(json, 'd10_9');
+  });
+  d3.json('/10.8.json', function(json) {
+    figure(json, 'd10_8');
+  });
+  d3.json('/10.7.json', function(json) {
+    figure(json, 'd10_7');
+  });
+  d3.json('/10.6.json', function(json) {
+    figure(json, 'd10_6');
+  });
+  d3.json('/10.5.json', function(json) {
+    figure(json, 'd10_5');
+  });
+  d3.json('/percent.json', function(json) {
+    figure(json, 'percent-log', {"yScale":"log"});
+    figure(json, 'percent');
+  });
+  d3.json('/support.json', function(json) {
+    figure(json, 'support', {"yScale":"log2"});
+  });
+  
+  </script>
+</body>
+</html>
