@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-VERSION="$(git describe)"
+VERSION="$(git rev-parse --short HEAD)"
 docker build -t griff/sparklelog:$VERSION .
 docker tag griff/sparklelog:$VERSION griff/sparklelog:latest
 
